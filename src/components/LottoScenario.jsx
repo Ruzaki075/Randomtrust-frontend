@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { motion } from "framer-motion";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
+import { saveAs } from "file-saver";
 import crypto from "crypto-js";
 import API_BASE_URL from "../config.js";
 
@@ -20,7 +21,8 @@ export default function LottoScenario() {
   const [result, setResult] = useState([]);
   const [snapshot, setSnapshot] = useState("");
   const [error, setError] = useState("");
-  const [history, setHistory] = useState([]); // ⬅️ история всех тиражей
+  const [history, setHistory] = useState([]);
+  const [count, setCount] = useState(6); // количество чисел для генерации
 
   const generateNumbers = (count = 6, max = 49) => {
     const set = new Set();
@@ -42,7 +44,7 @@ export default function LottoScenario() {
       await new Promise(r => setTimeout(r, 700));
       setStage("processing");
 
-      const res = await fetch(`${API_BASE_URL}/lottery/6`, {
+      const res = await fetch(`${API_BASE_URL}/lottery/${count}`, {
         method: "GET",
         headers: { "Accept": "application/json" },
       });
@@ -53,7 +55,7 @@ export default function LottoScenario() {
         finalNumbers = Array.isArray(data) ? data : data?.numbers || [];
       } else {
         console.warn("Backend unavailable, fallback to local RNG");
-        finalNumbers = generateNumbers();
+        finalNumbers = generateNumbers(count);
       }
 
       setStage("finalizing");
@@ -64,12 +66,10 @@ export default function LottoScenario() {
       setSnapshot(snap);
       setStage("done");
 
-      // сохраняем историю
       setHistory(prev => {
         const updated = [...prev, finalNumbers];
-        return updated.slice(-10); // максимум 10 последних
+        return updated.slice(-10);
       });
-
     } catch (err) {
       console.error("Ошибка при генерации:", err);
       setError("Ошибка связи с сервером");
@@ -79,14 +79,24 @@ export default function LottoScenario() {
     }
   };
 
-  // Текущие данные
+const downloadReport = () => {
+  if (history.length === 0) return;
+
+  const reportText = history
+    .map((draw) => `Результат: ${draw.join(", ")}`)
+    .join("\n");
+
+  const blob = new Blob([reportText], { type: "text/plain;charset=utf-8" });
+  saveAs(blob, `lottery_results_${Date.now()}.txt`);
+};
+
+
   const histData = useMemo(() => {
     const map = {};
     for (const n of result) map[n] = (map[n] || 0) + 1;
     return Object.keys(map).map(k => ({ name: k, value: map[k] }));
   }, [result]);
 
-  // Общие данные по всем тиражам
   const totalStats = useMemo(() => {
     const counts = {};
     for (const draw of history) {
@@ -105,8 +115,21 @@ export default function LottoScenario() {
         <div className="flex flex-col md:flex-row gap-4">
           {/* Левая часть */}
           <div className="flex-1 bg-transparent p-0">
-            <div className="mb-3 text-sm text-[#c9b57b]">Статусы генерации</div>
-            <motion.div key={stage} initial={{opacity:0,y:6}} animate={{opacity:1,y:0}} className="py-3 px-4 rounded bg-[#0d0d0e]">
+            <div className="mb-3 text-sm text-[#c9b57b]">Настройки и статус</div>
+
+            <div className="flex items-center gap-2 mb-3">
+              <label className="text-[#d6c68d] text-sm">Кол-во чисел:</label>
+              <input
+                type="number"
+                min="3"
+                max="20"
+                value={count}
+                onChange={(e) => setCount(Number(e.target.value))}
+                className="bg-[#0d0d0d] border border-[#d4a64f40] text-[#f5e4a0] px-3 py-1 rounded w-24 text-right focus:outline-none"
+              />
+            </div>
+
+            <motion.div key={stage} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="py-3 px-4 rounded bg-[#0d0d0e]">
               <div className="text-lg font-medium text-white capitalize">{stage}</div>
               <div className="text-sm text-[#d6c68d] mt-2">
                 {stage === "idle" && "Нажмите «Запустить тираж»"}
@@ -127,6 +150,13 @@ export default function LottoScenario() {
                 onClick={() => { setResult([]); setStage("idle"); setSnapshot(""); setHistory([]); }}
               >
                 Сброс
+              </button>
+              <button
+                className="px-4 py-2 rounded bg-[#1a1a1a] text-[#e0c887] hover:bg-[#2a2a2a]"
+                onClick={downloadReport}
+                disabled={!result.length}
+              >
+                Скачать отчёт
               </button>
             </div>
 
@@ -186,7 +216,7 @@ export default function LottoScenario() {
             <div style={{ height: 240 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie data={totalStats} dataKey="value" nameKey="name" outerRadius={80} fill="#e0b84d">
+                  <Pie data={totalStats} dataKey="value" nameKey="name" outerRadius={80}>
                     {totalStats.map((entry, idx) => (
                       <Cell key={idx} fill={COLORS[idx % COLORS.length]} />
                     ))}

@@ -8,6 +8,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { saveAs } from "file-saver";
+import { motion } from "framer-motion";
 import API_BASE_URL from "../config.js";
 
 export default function AuditScenario() {
@@ -18,11 +19,11 @@ export default function AuditScenario() {
 
   const parseFile = async (file) => {
     const text = await file.text();
-    const tokens = text
-      .split(/[\s,;]+/)
-      .map((t) => t.trim())
-      .filter(Boolean);
-    const nums = tokens.map((t) => parseFloat(t)).filter((n) => !isNaN(n));
+    const nums =
+      text
+        .match(/\d+/g)
+        ?.map((n) => parseInt(n, 10))
+        .filter((n) => !isNaN(n)) || [];
     setNumbers(nums);
     computeStats(nums);
   };
@@ -48,10 +49,12 @@ export default function AuditScenario() {
   };
 
   const runStatisticalTests = async () => {
+    if (!numbers.length) return;
     setLoading(true);
     setTestResult(null);
+
     try {
-      const res = await fetch(`${API_BASE_URL}/run-statistical-tests`, {
+      const res = await fetch(`${API_BASE_URL}/api/TestRunner/analyze`, {
         method: "POST",
         headers: {
           Accept: "application/json",
@@ -59,12 +62,16 @@ export default function AuditScenario() {
         },
         body: JSON.stringify({ numbers }),
       });
-      if (!res.ok) throw new Error("Ошибка API");
+
+      if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
-      setTestResult(data);
+      setTestResult({
+        ...data,
+        tests: data.tests || [],
+      });
     } catch (err) {
       console.error(err);
-      setTestResult({ message: "Не удалось выполнить тесты" });
+      setTestResult({ error: "Ошибка при анализе данных" });
     } finally {
       setLoading(false);
     }
@@ -82,11 +89,11 @@ export default function AuditScenario() {
     <div className="space-y-6">
       {/* Заголовок */}
       <div className="card">
-        <h2 className="text-3xl font-semibold mb-5 text-center text-transparent bg-clip-text bg-gradient-to-r from-[#f6e7b0] via-[#e7c45b] to-[#b98728] drop-shadow-[0_0_12px_rgba(240,200,100,0.25)] tracking-wide">
-          ⚙️ Сценарий 2 — Аудит внешнего генератора
+        <h2 className="text-3xl font-semibold mb-5 text-center text-transparent bg-clip-text bg-gradient-to-r from-[#f6e7b0] via-[#e7c45b] to-[#b98728]">
+           Сценарий 2 — Аудит внешнего генератора
         </h2>
 
-        {/* Загрузка и кнопки */}
+        {/* Загрузка файла */}
         <div className="bg-[#0d0d0d]/80 p-5 rounded-xl border border-[#d4a64f1f] backdrop-blur-sm">
           <div className="mb-3 text-sm text-[#e0c887]/90">
             Загрузите файл с числами <span className="opacity-70">(txt, csv)</span>
@@ -112,7 +119,7 @@ export default function AuditScenario() {
                   : "bg-gradient-to-r from-[#e7c45b] to-[#b98728] text-black hover:brightness-110"
               }`}
             >
-              {loading ? "Тестирование..." : "Запустить NIST-тесты"}
+              {loading ? "Тестирование..." : "Запустить анализ"}
             </button>
 
             <button
@@ -139,12 +146,12 @@ export default function AuditScenario() {
         </div>
       </div>
 
-      {/* Основные статистики и гистограмма */}
+      {/* Основная статистика */}
       {stats && (
         <div className="grid md:grid-cols-2 gap-5">
           <div className="card">
             <div className="text-sm text-[#d6c68d] mb-3 border-b border-[#3a2f18] pb-2">
-              📊 Основные статистики
+               Основные статистики
             </div>
             <div className="text-sm text-[#f0e6c2] space-y-1">
               <div>Количество: <span className="text-[#f6e7b0]">{stats.n}</span></div>
@@ -157,7 +164,7 @@ export default function AuditScenario() {
 
           <div className="card">
             <div className="text-sm text-[#d6c68d] mb-3 border-b border-[#3a2f18] pb-2">
-              📈 Гистограмма распределения
+              Гистограмма распределения
             </div>
             <div style={{ height: 240 }}>
               <ResponsiveContainer width="100%" height="100%">
@@ -180,15 +187,81 @@ export default function AuditScenario() {
       )}
 
       {/* Результаты тестов */}
-      {testResult && (
-        <div className="card">
+      {testResult && testResult.tests?.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6 }}
+          className="card"
+        >
           <div className="text-sm text-[#d6c68d] mb-3 border-b border-[#3a2f18] pb-2">
-            🧠 Результаты NIST-тестов
+            🧠 Результаты статистического анализа
           </div>
-          <pre className="text-xs text-[#bfe8b4] bg-[#0b0b0b] border border-[#d4a64f26] p-3 rounded-lg overflow-auto max-h-72 shadow-inner">
-            {JSON.stringify(testResult, null, 2)}
-          </pre>
-        </div>
+
+          <div className="text-sm text-[#f0e6c2] mb-2">
+            Всего чисел: <b>{testResult.count}</b> | Среднее:{" "}
+            <b>{testResult.mean.toFixed(3)}</b> | Диапазон:{" "}
+            <b>{testResult.min}–{testResult.max}</b>
+          </div>
+
+          <div className="text-sm mb-3">
+            {(() => {
+              const passed = testResult.tests.filter((t) => t.passed).length;
+              const total = testResult.tests.length;
+              return (
+                <div className="text-[#e0c887]">
+                   Пройдено{" "}
+                  <span className="text-[#7be07b] font-semibold">{passed}</span>{" "}
+                  из{" "}
+                  <span className="text-[#f6e7b0] font-semibold">{total}</span>{" "}
+                  тестов
+                </div>
+              );
+            })()}
+          </div>
+
+          {/* Таблица */}
+          <div className="overflow-x-auto rounded-lg border border-[#d4a64f33]">
+            <table className="w-full text-sm text-[#e0c887]">
+              <thead className="bg-[#1a1a1a] text-[#d4a64f]">
+                <tr>
+                  <th className="p-2 text-left border border-[#3a2f18]">Тест</th>
+                  <th className="p-2 text-center border border-[#3a2f18]">p-value</th>
+                  <th className="p-2 text-center border border-[#3a2f18]">Время (мс)</th>
+                  <th className="p-2 text-center border border-[#3a2f18]">Результат</th>
+                </tr>
+              </thead>
+              <tbody>
+                {testResult.tests.map((t, i) => (
+                  <motion.tr
+                    key={i}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: i * 0.05 }}
+                    className={`border border-[#3a2f18] hover:bg-[#111111] transition-colors duration-300 ${
+                      t.passed ? "bg-[#0f1c0f]" : "bg-[#1c0f0f]"
+                    }`}
+                  >
+                    <td className="p-2 border border-[#3a2f18]">{t.testName}</td>
+                    <td className="p-2 text-center border border-[#3a2f18]">
+                      {t.pValue.toFixed(4)}
+                    </td>
+                    <td className="p-2 text-center border border-[#3a2f18] text-[#f6e7b0]">
+                      {t.durationMs?.toFixed(2) || "—"}
+                    </td>
+                    <td
+                      className={`p-2 text-center font-medium ${
+                        t.passed ? "text-[#7be07b]" : "text-[#e07b7b]"
+                      }`}
+                    >
+                      {t.passed ? " Пройден" : " Не пройден"}
+                    </td>
+                  </motion.tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </motion.div>
       )}
     </div>
   );
