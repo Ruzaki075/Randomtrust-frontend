@@ -2,32 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
-:root{
-  --bg:#070707;
-  --gold:#FFD700;
-  --gold-2:#FFCC00;
-  --card:#111;
-  --muted:#9ca3af;
+@layer components {
+  .card {
+    @apply bg-gradient-to-b from-[#0f0f10] to-[#181818] border border-[#d4a64f26] rounded-2xl p-6 shadow-royal backdrop-blur-sm;
+  }
+
+  .btn-primary {
+    @apply bg-[#d4a64f] text-black font-semibold px-4 py-2 rounded-xl transition-all duration-300 hover:bg-[#e9c15c] hover:shadow-royal;
+  }
 }
-
-body{
-  background: linear-gradient(180deg, #070707 0%, #0b0b0b 100%);
-  color: #fff;
-  font-family: Inter, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
-}
-
-/* header */
-.header-logo{ font-weight:800; color:var(--gold); letter-spacing:1px; font-family: 'Montserrat', sans-serif; }
-
-/* buttons */
-.btn-primary{
-  background: linear-gradient(90deg,var(--gold),var(--gold-2));
-  color:#111; padding:0.6rem 1.1rem; border-radius:12px; font-weight:700;
-}
-
-/* cards */
-.card{ background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); border:1px solid rgba(255,255,255,0.04); padding:1rem; border-radius:12px; }
-
-/* slow spin util */
-.animate-spin-slow{ animation: spin 6s linear infinite; }
-@keyframes spin{ from{ transform: rotate(0deg);} to{ transform: rotate(360deg);} }
